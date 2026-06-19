@@ -1,0 +1,13 @@
+# Secrets — never commit real credentials (this is a public repo)
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
