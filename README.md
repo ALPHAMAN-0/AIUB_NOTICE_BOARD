@@ -1,1 +1,85 @@
-# AIUB_NOTICE_BOARD
+# AIUB Notice → Telegram Bot
+
+Watches the [AIUB notices page](https://www.aiub.edu/category/notices) and sends
+you a **Telegram message for every new notice** — classified by type and
+summarized in one line by AI. Runs **4× a day** on **GitHub Actions** for free.
+No server, no paid API keys.
+
+> 9am · 1pm · 5pm · 9pm (Asia/Dhaka). Each new notice arrives as its own message:
+>
+> ```
+> 🔔 New AIUB Notice
+> 📝 Exam
+> 📌 Seat Plan for Final-Term Exams of Spring 2025-26
+> 📅 16 Jun 2026
+> 📝 This notice provides the seat plan for final-term exams for LLB and BPharm students.
+> 🔗 Open notice
+> ```
+
+## How it works
+
+1. **Scrape** — `src/scraper.py` reads the notices listing (static HTML: title, date, detail-page URL).
+2. **Dedup** — compares against `state/seen.json`; alerts on **any notice it hasn't seen before** (so nothing is missed even if a run is skipped).
+3. **Classify + summarize** — `src/classifier.py` asks **GitHub Models** (free, via the workflow's `GITHUB_TOKEN`) for a category + one-line summary, working from the title. If the model is unavailable, a keyword fallback still picks a sensible category.
+4. **Notify** — `src/notifier.py` sends one Telegram message per new notice.
+5. **Persist** — updates `state/seen.json` (committed back to the repo) and a daily heartbeat (`state/last_check.txt`) that keeps the public-repo schedule alive.
+
+**Categories:** Exam 📝 · Registration/Add-Drop 🗓️ · Admission 🎓 · Result 📊 · Fee/Scholarship 💳 · Holiday 🏖️ · Event 🎉 · General 📢
+
+**First run is silent:** it records the ~20 notices currently on the page and sends nothing. From then on you only get genuinely new ones. (A flood guard also re-seeds silently if an abnormal burst appears, e.g. after long downtime.)
+
+## Setup (~5 minutes)
+
+### 1. Create your Telegram bot
+1. In Telegram, open [@BotFather](https://t.me/BotFather) → send `/newbot` → follow the prompts.
+2. Copy the **bot token** it gives you (looks like `123456:ABC-DEF...`).
+3. **Open your new bot and press _Start_** (send it any message). A bot can't message you until you message it first.
+
+### 2. Get your chat ID
+1. With the bot started, visit (replace `<TOKEN>`):
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`
+2. Find `"chat":{"id":123456789,...}` in the JSON — that number is your **chat ID**.
+   (Or message [@userinfobot](https://t.me/userinfobot), which replies with your ID.)
+
+### 3. Create the GitHub repo
+1. Create a **public** repo and push this project to it.
+2. Repo → **Settings → Secrets and variables → Actions → New repository secret**, add:
+   - `TELEGRAM_BOT_TOKEN` — the bot token from step 1
+   - `TELEGRAM_CHAT_ID` — the chat ID from step 2
+
+   *(`GITHUB_TOKEN` is provided automatically — do not add it.)*
+
+### 4. Enable & verify
+1. Open the **Actions** tab and enable workflows if prompted.
+2. **AIUB Notice Check → Run workflow → mode: `test`** — you should get a test message in Telegram within a few seconds. ✅
+3. Run it once more with **mode: `run`** to seed silently. After that, the 4×/day schedule takes over and you'll be messaged on new notices.
+
+## Run locally
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+export TELEGRAM_BOT_TOKEN=...   # your bot token
+export TELEGRAM_CHAT_ID=...     # your chat id
+export GITHUB_TOKEN=$(gh auth token)   # optional: enables AI classification locally
+
+python src/main.py --test       # send one synthetic Telegram message
+python src/main.py --dry-run     # parse + classify + print; sends nothing, writes nothing
+python src/main.py               # real run (sends + writes state)
+```
+
+## Customize
+
+| Want to change… | Where |
+|---|---|
+| Check times | the four `cron:` lines in `.github/workflows/check-notices.yml` (UTC; Dhaka = UTC+6) |
+| Categories / keywords | `CATEGORIES`, `CATEGORY_EMOJI`, `_KEYWORDS` in `src/classifier.py` |
+| AI model | `DEFAULT_MODEL` in `src/classifier.py` (e.g. `openai/gpt-4.1-mini`) |
+| Flood-guard threshold | `--threshold` flag / `DEFAULT_FLOOD_THRESHOLD` in `src/main.py` |
+| Message layout | `format_message()` in `src/notifier.py` |
+
+## Notes
+- **Cost:** free. Public-repo Actions minutes are unlimited; GitHub Models free tier (150 calls/day) dwarfs our ~20/day.
+- **Reliability:** GitHub may delay scheduled runs under load — harmless here, since "any unseen notice" catches up on the next run.
+- **If scraping ever returns 0 notices** (site redesign), the run aborts without touching state, so you won't get false "first run" floods. Update the selectors in `src/scraper.py` if the layout changes.
