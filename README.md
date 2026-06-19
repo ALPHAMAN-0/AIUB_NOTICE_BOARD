@@ -16,6 +16,30 @@ No server, no paid API keys.
 > 🔗 Open notice
 > ```
 
+## The simple version 🤖
+
+Think of your university's notice board by the front gate, where teachers pin up exam dates, holidays, and results. Checking it yourself every few hours is a chore — so this project is a **tiny robot that does it for you**:
+
+1. **It wakes up by itself, 4 times a day** (morning, noon, afternoon, night). You never press anything.
+2. **It looks at the AIUB notices page** and reads everything posted.
+3. **It keeps a notebook** (`state/seen.json`) of every notice it has already seen, and asks: *is there anything here I haven't seen before?*
+4. **If nothing is new → it stays quiet** and goes back to sleep. (No spam — silence just means "nothing new".)
+5. **If something is new → it reads the notice, an AI picks the category and writes a one-line summary, and it sends a Telegram message to your phone.** Then it notes the notice in its notebook so you're never told twice.
+6. **It goes back to sleep and repeats** — forever.
+
+Two things make it handy: it runs on **GitHub's computers (the cloud)**, so it keeps watching even while your laptop is off and you're asleep — and it **only messages you when there's genuinely something new**.
+
+```mermaid
+flowchart TD
+    A([Wakes up<br/>4 times a day]) --> B[Checks the board<br/>the AIUB website]
+    B --> C{Anything new?<br/>compares to its notebook}
+    C -->|no| D[Nothing new<br/>stays quiet]
+    C -->|yes| E[Found something new<br/>sorts and summarizes it]
+    E --> F[Messages your phone<br/>on Telegram]
+    D -.->|then again, next time| A
+    F -.->|then again, next time| A
+```
+
 ## How it works
 
 1. **Scrape** — `src/scraper.py` reads the notices listing (static HTML: title, date, detail-page URL).
