@@ -28,6 +28,40 @@ No server, no paid API keys.
 
 **First run is silent:** it records the ~20 notices currently on the page and sends nothing. From then on you only get genuinely new ones. (A flood guard also re-seeds silently if an abnormal burst appears, e.g. after long downtime.)
 
+## Automation (GitHub Actions)
+
+The bot runs itself from [`.github/workflows/check-notices.yml`](.github/workflows/check-notices.yml) — no server required.
+
+**Triggers**
+- **Schedule** — four `cron:` lines run it 4×/day. GitHub cron is UTC-only, so each Dhaka time is written as `Dhaka − 6h` (Bangladesh has no DST, so this stays correct year-round):
+
+  | Asia/Dhaka | UTC cron |
+  |---|---|
+  | 09:00 | `0 3 * * *` |
+  | 13:00 | `0 7 * * *` |
+  | 17:00 | `0 11 * * *` |
+  | 21:00 | `0 15 * * *` |
+
+- **Manual** — `workflow_dispatch` with a `mode` dropdown:
+  - `run` (default) — full scrape → notify → commit state (same as a scheduled run)
+  - `test` — sends one test Telegram message; writes no state, makes no commit
+
+**Permissions** (declared at the top of the file):
+- `contents: write` — lets the run commit the updated `state/` back to the repo
+- `models: read` — lets the built-in `GITHUB_TOKEN` call the GitHub Models API for classification (no extra PAT needed)
+
+**What a scheduled / `run` execution does**
+1. `actions/checkout@v5` + `actions/setup-python@v6` (Python 3.12, pip cache)
+2. `pip install -r requirements.txt`
+3. `python src/main.py` — scrape, dedup, classify, notify
+4. Commit `state/` back **only if it changed** (`git diff --cached --quiet` guard), authored as `github-actions[bot]`
+
+**Safety & reliability**
+- **No run loop:** a push made with `GITHUB_TOKEN` doesn't trigger new workflow runs, and `schedule` / `workflow_dispatch` never fire on pushes.
+- **Schedule stays alive:** GitHub disables scheduled workflows on public repos after **60 days of inactivity**; the daily `state/last_check.txt` heartbeat commit keeps resetting that clock.
+- **Fail-safe commit:** if scraping returns 0 notices, `main.py` exits non-zero, which (via the step's implicit `success()` guard) skips the commit — so a site redesign never overwrites good state.
+- **One run at a time:** a `concurrency` group queues overlapping runs instead of racing them.
+
 ## Setup (~5 minutes)
 
 ### 1. Create your Telegram bot

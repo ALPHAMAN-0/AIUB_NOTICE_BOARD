@@ -1,0 +1,88 @@
+name: AIUB Notice Check
+
+# Watches the AIUB notices page 4×/day and DMs new notices via Telegram.
+# Times below are in Asia/Dhaka (UTC+6, no DST). GitHub cron is UTC-only,
+# so each Dhaka time is written as (Dhaka - 6h) in UTC.
+on:
+  schedule:
+    - cron: '0 3 * * *'    # 09:00 Asia/Dhaka
+    - cron: '0 7 * * *'    # 13:00 Asia/Dhaka
+    - cron: '0 11 * * *'   # 17:00 Asia/Dhaka
+    - cron: '0 15 * * *'   # 21:00 Asia/Dhaka
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'run = scrape + notify (and seed on first run); test = send one test Telegram message'
+        required: true
+        default: 'run'
+        type: choice
+        options:
+          - run
+          - test
+
+# contents:write lets the job commit state/ back to the repo.
+# models:read lets the built-in GITHUB_TOKEN call the GitHub Models API
+# used by src/classifier.py (no PAT needed).
+permissions:
+  contents: write
+  models: read
+
+# Never let two runs overlap; queue a new one behind any in-flight run.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # mode=test: just prove Telegram delivery works. Sends one message,
+      # writes no state, makes no commit.
+      - name: Send test message
+        if: ${{ inputs.mode == 'test' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python src/main.py --test
+
+      # Default path for scheduled runs (no input) and mode=run.
+      # main.py scrapes, dedups against state/seen.json, classifies via
+      # GitHub Models, sends Telegram messages, and updates state/.
+      - name: Check notices
+        if: ${{ inputs.mode != 'test' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python src/main.py
+
+      # Persist state/ (seen.json + the daily last_check.txt heartbeat).
+      # The heartbeat changes at least once a day, so this commit also keeps
+      # the schedule alive (public-repo schedules are disabled after 60 days
+      # of repo inactivity). A GITHUB_TOKEN push does not re-trigger workflows,
+      # so there is no run loop. Skipped automatically if "Check notices" fails
+      # (implicit success() guard) — e.g. the safe-abort on 0 scraped notices.
+      - name: Commit state if changed
+        if: ${{ inputs.mode != 'test' }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state
+          if git diff --cached --quiet; then
+            echo "No state changes to commit."
+          else
+            git commit -m "chore: update notice state [skip ci]"
+            git push
+          fi
