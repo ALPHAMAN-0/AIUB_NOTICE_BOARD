@@ -60,20 +60,30 @@ jobs:
       # Default path for scheduled runs (no input) and mode=run.
       # main.py scrapes, dedups against state/seen.json, classifies via
       # GitHub Models, sends Telegram messages, and updates state/.
+      #
+      # AIUB_PROXY (optional secret): aiub.edu often drops traffic from
+      # outside Bangladesh, which includes GitHub's runners. Set this to a
+      # proxy URL with a Bangladesh exit (http://user:pass@host:port) to
+      # route ONLY the scrape through it. Unset = direct connection; a
+      # failed fetch exits 0 (skip + Telegram outage alert after 24h),
+      # so the run stays green instead of failing 4×/day.
       - name: Check notices
         if: ${{ inputs.mode != 'test' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          AIUB_PROXY: ${{ secrets.AIUB_PROXY }}
         run: python src/main.py
 
-      # Persist state/ (seen.json + the daily last_check.txt heartbeat).
-      # The heartbeat changes at least once a day, so this commit also keeps
-      # the schedule alive (public-repo schedules are disabled after 60 days
-      # of repo inactivity). A GITHUB_TOKEN push does not re-trigger workflows,
-      # so there is no run loop. Skipped automatically if "Check notices" fails
-      # (implicit success() guard) — e.g. the safe-abort on 0 scraped notices.
+      # Persist state/ (seen.json, the daily last_check.txt heartbeat, and
+      # outage.json while the site is unreachable). The heartbeat — or, during
+      # an outage, the daily alert timestamp — changes at least once a day, so
+      # this commit also keeps the schedule alive (public-repo schedules are
+      # disabled after 60 days of repo inactivity). A GITHUB_TOKEN push does
+      # not re-trigger workflows, so there is no run loop. Skipped automatically
+      # if "Check notices" fails (implicit success() guard) — e.g. the
+      # safe-abort on 0 scraped notices.
       - name: Commit state if changed
         if: ${{ inputs.mode != 'test' }}
         run: |
@@ -84,5 +94,9 @@ jobs:
             echo "No state changes to commit."
           else
             git commit -m "chore: update notice state [skip ci]"
+            # Rebase in case anything landed on main since checkout (e.g. a
+            # README edit mid-run) — a bare push would be rejected and the
+            # state commit lost, causing duplicate notices next run.
+            git pull --rebase origin "${GITHUB_REF_NAME:-main}"
             git push
           fi

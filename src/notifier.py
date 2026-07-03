@@ -53,6 +53,29 @@ def send_notice(token: str, chat_id: str, notice: Notice,
     send_message(token, chat_id, format_message(notice, category, summary))
 
 
+def send_outage_alert(token: str, chat_id: str,
+                      since_str: str, error: str) -> None:
+    text = "\n".join([
+        "⚠️ <b>AIUB Notice Bot — site unreachable</b>",
+        f"🌐 www.aiub.edu has been unreachable since {_esc(since_str)}.",
+        f"🧰 Last error: {_esc(error[:200])}",
+        "ℹ️ The site is likely down or blocking traffic from outside "
+        "Bangladesh. The bot keeps checking 4×/day and will message you "
+        "when it recovers.",
+    ])
+    send_message(token, chat_id, text)
+
+
+def send_recovery(token: str, chat_id: str) -> None:
+    text = "\n".join([
+        "✅ <b>AIUB Notice Bot — site reachable again</b>",
+        "🌐 www.aiub.edu is back. Normal notice checks have resumed. "
+        "New notices will follow in separate messages (a very large "
+        "backlog is re-seeded silently instead, to avoid flooding you).",
+    ])
+    send_message(token, chat_id, text)
+
+
 def send_test(token: str, chat_id: str) -> None:
     sample = Notice(
         title="Test notice — pipeline check",

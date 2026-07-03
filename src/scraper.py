@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 import re
+import sys
+import time
 from dataclasses import dataclass
 from urllib.parse import urljoin
 
@@ -9,6 +12,9 @@ from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.aiub.edu"
 NOTICES_URL = f"{BASE_URL}/category/notices"
+
+# Waits between attempts; total attempts = len(RETRY_DELAYS_S) + 1.
+RETRY_DELAYS_S = (5, 15)
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -70,14 +76,33 @@ def _find_href(node):
     return any_a["href"] if any_a else None
 
 
+def _proxies() -> dict | None:
+    # AIUB_PROXY routes ONLY the scrape through a proxy (e.g. a Bangladesh
+    # exit, since aiub.edu drops most foreign traffic). Telegram and GitHub
+    # Models calls stay direct — never send those tokens through a proxy.
+    proxy = os.environ.get("AIUB_PROXY", "").strip()
+    return {"http": proxy, "https": proxy} if proxy else None
+
+
 def fetch_notices(timeout: int = 20) -> list[Notice]:
-    resp = requests.get(
-        NOTICES_URL,
-        headers={"User-Agent": USER_AGENT},
-        timeout=timeout,
-    )
-    resp.raise_for_status()
-    return parse_notices(resp.text)
+    attempts = len(RETRY_DELAYS_S) + 1
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = requests.get(
+                NOTICES_URL,
+                headers={"User-Agent": USER_AGENT},
+                timeout=timeout,
+                proxies=_proxies(),
+            )
+            resp.raise_for_status()
+            return parse_notices(resp.text)
+        except requests.RequestException as exc:
+            if attempt == attempts:
+                raise
+            wait = RETRY_DELAYS_S[attempt - 1]
+            print(f"  [scraper] attempt {attempt}/{attempts} failed ({exc}); "
+                  f"retrying in {wait}s", file=sys.stderr)
+            time.sleep(wait)
 
 
 if __name__ == "__main__":

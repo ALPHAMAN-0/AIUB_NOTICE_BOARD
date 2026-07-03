@@ -5,6 +5,9 @@ you a **Telegram message for every new notice** — classified by type and
 summarized in one line by AI. Runs **4× a day** on **GitHub Actions** for free.
 No server, no paid API keys.
 
+> 📦 **Repo:** https://github.com/ALPHAMAN-0/AIUB_NOTICE_BOARD
+> **Want your own?** Fork it and deploy in ~5 minutes — see [Setup](#setup-5-minutes) below.
+
 > 9am · 1pm · 5pm · 9pm (Asia/Dhaka). Each new notice arrives as its own message:
 >
 > ```
@@ -84,6 +87,7 @@ The bot runs itself from [`.github/workflows/check-notices.yml`](.github/workflo
 - **No run loop:** a push made with `GITHUB_TOKEN` doesn't trigger new workflow runs, and `schedule` / `workflow_dispatch` never fire on pushes.
 - **Schedule stays alive:** GitHub disables scheduled workflows on public repos after **60 days of inactivity**; the daily `state/last_check.txt` heartbeat commit keeps resetting that clock.
 - **Fail-safe commit:** if scraping returns 0 notices, `main.py` exits non-zero, which (via the step's implicit `success()` guard) skips the commit — so a site redesign never overwrites good state.
+- **Site outages are handled, not fatal:** the scraper retries 3× with backoff; if the site is still unreachable (it often **blocks traffic from outside Bangladesh**, which includes GitHub's runners), the run logs it and exits 0 — no red ✗, no failure email. Seen-notices state and the heartbeat are left untouched; the outage itself is tracked (and committed) in `state/outage.json`, whose daily update also keeps the schedule-alive clock ticking while the site is dark. Once it has been dark for **24 h** the bot DMs you a ⚠️ Telegram alert (repeated at most daily), and sends a ✅ once the site is back **and** parsing normally.
 - **One run at a time:** a `concurrency` group queues overlapping runs instead of racing them.
 
 ## Setup (~5 minutes)
@@ -99,9 +103,11 @@ The bot runs itself from [`.github/workflows/check-notices.yml`](.github/workflo
 2. Find `"chat":{"id":123456789,...}` in the JSON — that number is your **chat ID**.
    (Or message [@userinfobot](https://t.me/userinfobot), which replies with your ID.)
 
-### 3. Create the GitHub repo
-1. Create a **public** repo and push this project to it.
-2. Repo → **Settings → Secrets and variables → Actions → New repository secret**, add:
+### 3. Fork this repo and add your secrets
+1. **Fork** this repository to your own account — the **Fork** button at the top-right of
+   [the repo page](https://github.com/ALPHAMAN-0/AIUB_NOTICE_BOARD). Keep your fork **public**
+   so Actions minutes stay free. *(Or push your own copy anywhere — it just needs to be public.)*
+2. In **your** fork: **Settings → Secrets and variables → Actions → New repository secret**, add:
    - `TELEGRAM_BOT_TOKEN` — the bot token from step 1
    - `TELEGRAM_CHAT_ID` — the chat ID from step 2
 
@@ -115,6 +121,9 @@ The bot runs itself from [`.github/workflows/check-notices.yml`](.github/workflo
 ## Run locally
 
 ```bash
+git clone https://github.com/ALPHAMAN-0/AIUB_NOTICE_BOARD.git
+cd AIUB_NOTICE_BOARD
+
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -136,6 +145,18 @@ python src/main.py               # real run (sends + writes state)
 | AI model | `DEFAULT_MODEL` in `src/classifier.py` (e.g. `openai/gpt-4.1-mini`) |
 | Flood-guard threshold | `--threshold` flag / `DEFAULT_FLOOD_THRESHOLD` in `src/main.py` |
 | Message layout | `format_message()` in `src/notifier.py` |
+
+## When the AIUB site is unreachable
+
+aiub.edu periodically **firewalls traffic from outside Bangladesh** (in June 2026 it went dark to every foreign network — GitHub's runners, archive.org's crawlers, everything — while staying up locally). No code change can get a blocked runner through a firewall, so the bot is built to ride it out:
+
+1. **Each run retries 3×**, then skips cleanly (exit 0 — the workflow stays green, since a blocked site isn't a pipeline bug).
+2. **After 24 h of continuous outage the bot DMs you** on Telegram, then at most once a day while it lasts (`state/outage.json` tracks this), and confirms with a ✅ message on recovery.
+3. **Catch-up after recovery is best-effort:** dedup is by URL, so notices still on the listing page after an outage are delivered on the first successful run. But the page only shows ~20 items — anything that scrolled off during a long outage is missed — and a backlog above the flood threshold (15) is re-seeded silently instead of spamming you. For long outages, skim the notice page once after recovery.
+
+If the block persists and you want live checks anyway, two options:
+- **`AIUB_PROXY` secret** — set it to a proxy URL with a **Bangladesh exit** (`http://user:pass@host:port`). Only the scrape is routed through it; Telegram and GitHub Models calls stay direct, so your tokens never transit the proxy.
+- **Self-hosted runner** — run the job from a machine inside Bangladesh (change `runs-on` accordingly).
 
 ## Notes
 - **Cost:** free. Public-repo Actions minutes are unlimited; GitHub Models free tier (150 calls/day) dwarfs our ~20/day.
