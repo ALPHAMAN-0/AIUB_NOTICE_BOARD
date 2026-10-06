@@ -1,0 +1,4 @@
+# Test tooling only. The bot itself (and the Actions workflow) needs just
+# requirements.txt.
+-r requirements.txt
+pytest>=8

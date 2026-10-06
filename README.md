@@ -136,6 +136,13 @@ python src/main.py --dry-run     # parse + classify + print; sends nothing, writ
 python src/main.py               # real run (sends + writes state)
 ```
 
+### Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest          # offline: the website, Telegram and GitHub Models are all mocked
+```
+
 ## Customize
 
 | Want to change… | Where |
