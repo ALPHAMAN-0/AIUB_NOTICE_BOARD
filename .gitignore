@@ -1,10 +1,13 @@
 # Secrets — never commit real credentials (this is a public repo)
 .env
 .env.local
+.env.*
+!.env.example
 
 # Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
 env/
