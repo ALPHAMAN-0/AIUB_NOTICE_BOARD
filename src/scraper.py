@@ -54,7 +54,7 @@ def parse_notices(html: str) -> list[Notice]:
         href = _find_href(node)
         if not href:
             continue
-        url = urljoin(BASE_URL + "/", href)
+        url = urljoin(BASE_URL + "/", str(href))
 
         if url in seen_urls:
             continue
@@ -128,6 +128,7 @@ def fetch_notices(timeout: int = 20) -> list[Notice]:
             print(f"  [scraper] attempt {attempt}/{attempts} failed ({reason}); "
                   f"retrying in {wait}s", file=sys.stderr)
             time.sleep(wait)
+    raise AssertionError("unreachable: the last attempt returns or raises")
 
 
 if __name__ == "__main__":

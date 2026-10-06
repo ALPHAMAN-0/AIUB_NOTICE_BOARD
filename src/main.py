@@ -148,8 +148,8 @@ def run(dry_run: bool, state_dir: Path, threshold: int) -> int:
     seen_path = state_dir / "seen.json"
     heartbeat_path = state_dir / "last_check.txt"
 
-    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    tg_chat = os.environ.get("TELEGRAM_CHAT_ID")
+    tg_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    tg_chat = os.environ.get("TELEGRAM_CHAT_ID", "")
     gh_token = os.environ.get("GITHUB_TOKEN")
 
     if not dry_run and (not tg_token or not tg_chat):
