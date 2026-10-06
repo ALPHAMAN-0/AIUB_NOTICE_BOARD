@@ -1,4 +1,5 @@
-# Test tooling only. The bot itself (and the Actions workflow) needs just
-# requirements.txt.
--r requirements.txt
-pytest>=8
+# Test tooling only, installed on top of requirements.txt. The bot itself (and
+# the Actions workflow) needs just requirements.txt.
+# The floors are the first releases without a known advisory.
+pytest>=9.0.3
+pygments>=2.20.0

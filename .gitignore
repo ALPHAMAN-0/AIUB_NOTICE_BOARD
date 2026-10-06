@@ -1,7 +1,4 @@
 # Secrets — never commit real credentials (this is a public repo)
-.env
-.env.local
-.env.*
 !.env.example
 
 # Python
@@ -14,3 +11,5 @@ env/
 
 # OS
 .DS_Store
+config.bat
+node_modules

@@ -139,7 +139,7 @@ python src/main.py               # real run (sends + writes state)
 ### Tests
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements.txt -r requirements-dev.txt
 pytest          # offline: the website, Telegram and GitHub Models are all mocked
 ```
 
