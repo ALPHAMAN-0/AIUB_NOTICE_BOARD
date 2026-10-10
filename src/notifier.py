@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 
 import requests
 
@@ -9,9 +10,20 @@ from scraper import Notice
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
+# The API URL embeds the bot token, and `requests` quotes that URL in its
+# error text. Callers print these errors to the (public) Actions log, so the
+# token is scrubbed from everything send_message() raises.
+_BOT_PATH = re.compile(r"/bot[^/\s]+")
+
 
 def _esc(text: str) -> str:
     return html.escape(text or "", quote=False)
+
+
+def _scrub(text: str, token: str) -> str:
+    if token:
+        text = text.replace(token, "***")
+    return _BOT_PATH.sub("/bot***", text)
 
 
 def format_message(notice: Notice, category: str, summary: str) -> str:
@@ -29,21 +41,29 @@ def format_message(notice: Notice, category: str, summary: str) -> str:
 
 
 def send_message(token: str, chat_id: str, text: str, timeout: int = 20) -> dict:
-    resp = requests.post(
-        TELEGRAM_API.format(token=token),
-        json={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-            "link_preview_options": {"is_disabled": True},
-        },
-        timeout=timeout,
-    )
+    try:
+        resp = requests.post(
+            TELEGRAM_API.format(token=token),
+            json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML",
+                "link_preview_options": {"is_disabled": True},
+            },
+            timeout=timeout,
+        )
+    except requests.RequestException as exc:
+        # "from None": the original error (token in its URL) must not be
+        # chained into a traceback either, e.g. when --test fails uncaught.
+        raise RuntimeError(
+            f"Telegram request failed: {_scrub(str(exc), token)}"
+        ) from None
     data = resp.json() if resp.content else {}
     if not resp.ok or not data.get("ok", False):
+        detail = str(data.get("description") or resp.text[:300])
         raise RuntimeError(
             f"Telegram sendMessage failed (HTTP {resp.status_code}): "
-            f"{data.get('description') or resp.text[:300]}"
+            f"{_scrub(detail, token)}"
         )
     return data
 

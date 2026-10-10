@@ -5,7 +5,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -54,7 +54,7 @@ def parse_notices(html: str) -> list[Notice]:
         href = _find_href(node)
         if not href:
             continue
-        url = urljoin(BASE_URL + "/", href)
+        url = urljoin(BASE_URL + "/", str(href))
 
         if url in seen_urls:
             continue
@@ -84,6 +84,26 @@ def _proxies() -> dict | None:
     return {"http": proxy, "https": proxy} if proxy else None
 
 
+def _scrub_proxy(text: str) -> str:
+    # Connection errors name the proxy's host, and an unparseable proxy URL
+    # is quoted whole (credentials included). These errors go to the (public)
+    # Actions log and into the Telegram outage alert, and Actions only masks
+    # the secret where it appears verbatim — so strip every part of it here.
+    proxy = os.environ.get("AIUB_PROXY", "").strip()
+    if not proxy:
+        return text
+    parts = {proxy}
+    try:
+        url = urlsplit(proxy if "://" in proxy else f"//{proxy}")
+        parts.update(p for p in (url.netloc, url.username, url.password,
+                                 url.hostname) if p)
+    except ValueError:
+        pass
+    for part in sorted(parts, key=len, reverse=True):
+        text = re.sub(re.escape(part), "***", text, flags=re.IGNORECASE)
+    return text
+
+
 def fetch_notices(timeout: int = 20) -> list[Notice]:
     attempts = len(RETRY_DELAYS_S) + 1
     for attempt in range(1, attempts + 1):
@@ -97,12 +117,18 @@ def fetch_notices(timeout: int = 20) -> list[Notice]:
             resp.raise_for_status()
             return parse_notices(resp.text)
         except requests.RequestException as exc:
+            reason = _scrub_proxy(str(exc))
             if attempt == attempts:
-                raise
+                if reason == str(exc):
+                    raise
+                # Raise a clean copy instead: the original would carry the
+                # proxy details into the caller's log line and alert.
+                raise requests.RequestException(reason) from None
             wait = RETRY_DELAYS_S[attempt - 1]
-            print(f"  [scraper] attempt {attempt}/{attempts} failed ({exc}); "
+            print(f"  [scraper] attempt {attempt}/{attempts} failed ({reason}); "
                   f"retrying in {wait}s", file=sys.stderr)
             time.sleep(wait)
+    raise AssertionError("unreachable: the last attempt returns or raises")
 
 
 if __name__ == "__main__":
