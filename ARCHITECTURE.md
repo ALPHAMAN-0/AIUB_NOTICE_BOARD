@@ -22,6 +22,8 @@ tags: [architecture, AIUB_NOTICE_BOARD]
 | `.github/workflows/check-notices.yml` | GitHub Actions schedule/dispatch that runs `python src/main.py` (README) |
 | `.env.example` | local env var template (not read — out of scope) |
 | `requirements.txt` | Python deps (`requests`, `beautifulsoup4`) |
+| `requirements-dev.txt` | test tooling (`pytest`), installed on top of `requirements.txt` |
+| `tests/` | offline pytest suite: `conftest.py` (blocks network and credentials) plus one `test_<module>.py` per `src/` module |
 
 ## 3. Diagram
 ```mermaid
