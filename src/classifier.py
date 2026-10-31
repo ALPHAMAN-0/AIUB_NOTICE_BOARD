@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import utils.net
 import json
 
 import requests
